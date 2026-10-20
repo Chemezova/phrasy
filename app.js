@@ -469,8 +469,56 @@ function showWords() {
       <button class="big" type="submit">Добавить</button>
     </form>
     <p class="note">Подсказка: если во фразе есть частица (up, out, off…) и она есть в примере, Фразик сам сделает из неё упражнение «вставь слово».</p>
+
+    <div class="section-title">Добавить списком</div>
+    <form id="bulk">
+      <label class="field"><span>Одна фраза на строку: фраза – перевод – пример (пример можно не писать). Можно просто скопировать строки из Google Таблицы.</span>
+        <textarea name="list" rows="7" autocapitalize="none" placeholder="run out of – закончиться – We ran out of milk.&#10;look into – изучить&#10;keep in touch – оставаться на связи"></textarea></label>
+      <button class="ghost" type="submit">📋 Добавить все</button>
+    </form>
+    <div id="bulk-report"></div>
+
     <div class="list">${rows || ''}</div>
   `);
+}
+
+// Разбор списка: строки из Google Таблицы (через табуляцию) или «фраза – перевод – пример»
+function parseLine(line) {
+  let cols;
+  if (line.includes('\t')) cols = line.split('\t');
+  else cols = line.split(/\s+[–—-]\s+|\s*[=;|]\s*/);
+  cols = cols.map(c => c.trim()).filter(Boolean);
+  if (cols.length < 2) return null;
+  const [en, ru, ...rest] = cols;
+  // Пример — колонка, похожая на предложение с этой фразой (синонимы пропускаем)
+  const first = en.toLowerCase().split(/\s+/)[0];
+  const ex = rest.find(c => c.split(/\s+/).length >= 4 && c.toLowerCase().includes(first)) || '';
+  return { en, ru, ex };
+}
+
+function addBulk(form) {
+  const lines = form.list.value.split('\n').map(l => l.trim()).filter(Boolean);
+  if (!lines.length) return;
+  const known = new Set(allItems().map(i => i.en.toLowerCase()));
+  const added = [], dups = [], noRu = [];
+  lines.forEach((line, n) => {
+    const p = parseLine(line);
+    if (!p) { noRu.push(line); return; }
+    const key = p.en.toLowerCase();
+    if (known.has(key)) { dups.push(p.en); return; }
+    known.add(key);
+    state.custom.push({ id: 'c:' + Date.now() + '-' + n, en: p.en, ru: p.ru, ex: p.ex, exRu: '' });
+    added.push(p.en);
+  });
+  save();
+  showWords();
+  document.getElementById('bulk-report').innerHTML = `<div class="note">
+    ✅ Добавлено: ${added.length}
+    ${dups.length ? `<br>↩️ Уже были в приложении: ${dups.map(esc).join(', ')}` : ''}
+    ${noRu.length ? `<br>⚠️ Не получилось разобрать (нет перевода): ${noRu.map(esc).join('; ')}` : ''}
+  </div>`;
+  if (noRu.length) document.querySelector('#bulk textarea').value = noRu.join('\n');
+  document.getElementById('bulk-report').scrollIntoView({ block: 'center' });
 }
 
 function dots(id) {
@@ -588,6 +636,7 @@ app.addEventListener('click', e => {
 
 app.addEventListener('submit', e => {
   if (e.target.id === 'add') { e.preventDefault(); addWord(e.target); }
+  if (e.target.id === 'bulk') { e.preventDefault(); addBulk(e.target); }
 });
 
 app.addEventListener('change', e => {
