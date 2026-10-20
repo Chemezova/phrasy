@@ -14,7 +14,7 @@ TOPICS.mine = { name: 'Мои фразы', icon: '⭐' };
 // ---------- Хранилище ----------
 
 function emptyState() {
-  return { version: 1, progress: {}, custom: [], topic: 'all', days: {} };
+  return { version: 1, progress: {}, custom: [], topic: 'all', days: {}, mode: 'mix' };
 }
 
 function load() {
@@ -182,8 +182,8 @@ function homeGreeting() {
 function showHome() {
   session = null;
   const all = topicStats('all');
-  const todayCount = state.days[today()] || 0;
-  const inWork = Object.values(state.progress).filter(p => p.box > 0 && p.box < LEARNED_BOX).length;
+  const todayCount = listOf('today').length;
+  const inWork = listOf('work').length;
   const topicKeys = Object.keys(TOPICS).filter(k => !TOPICS[k].group && (k !== 'mine' || state.custom.length));
   const sheetKeys = Object.keys(TOPICS).filter(k => TOPICS[k].group === 'sheet');
 
@@ -197,10 +197,14 @@ function showHome() {
     <button class="big" data-go="start">Поехали</button>
     <p class="hint">${state.topic === 'all' ? 'Все темы вперемешку' : TOPICS[state.topic].icon + ' ' + TOPICS[state.topic].name}</p>
 
+    <div class="seg" role="group" aria-label="Направление перевода">
+      ${Object.entries(MODES).map(([k, m]) => `<button class="${state.mode === k ? 'on' : ''}" data-mode="${k}">${m.label}</button>`).join('')}
+    </div>
+
     <div class="stats">
-      <div class="stat"><b>${all.learned}</b><span>выучено</span></div>
-      <div class="stat"><b>${inWork}</b><span>в процессе</span></div>
-      <div class="stat"><b>${todayCount}</b><span>сегодня</span></div>
+      <button class="stat" data-list="learned"><b>${all.learned}</b><span>выучено</span></button>
+      <button class="stat" data-list="work"><b>${inWork}</b><span>в процессе</span></button>
+      <button class="stat" data-list="today"><b>${todayCount}</b><span>сегодня</span></button>
     </div>
 
     <div class="section-title">Тема</div>
@@ -251,14 +255,29 @@ function startSession() {
   nextStep();
 }
 
+const MODES = {
+  mix:     { label: 'Вперемешку' },
+  'en-ru': { label: 'EN → RU' },
+  'ru-en': { label: 'RU → EN' },
+};
+
+// Варианты ответа из той же темы: правильный + 2 других, без одинаковых
+function choicesFor(item, field) {
+  const pool = itemsOf(item.topic === 'mine' ? 'all' : item.topic);
+  const others = Array.from(new Set(shuffle(pool).map(i => i[field]).filter(v => v && v !== item[field])));
+  if (others.length < 2) return null;
+  return shuffle([item[field], others[0], others[1]]);
+}
+
 function chooseExercise(item) {
   const p = prog(item.id);
   if (!p || p.box === 0) return 'intro';
-  const kinds = [];
+  if (state.mode === 'ru-en') return 'reverse';
+  if (state.mode === 'en-ru') return 'meaning';
+  // Вперемешку: «что значит» и «вставь слово», со второго круга ещё «как сказать по-английски»
+  const kinds = ['meaning'];
   if (item.gap) kinds.push('gap');
-  if (itemsOf(item.topic === 'mine' ? 'all' : item.topic).length >= 3) kinds.push('reverse');
-  if (!kinds.length) return 'intro';
-  if (p.box <= 2 && item.gap) return 'gap';
+  if (p.box >= 2) kinds.push('reverse');
   return pick(kinds);
 }
 
@@ -277,7 +296,9 @@ function nextStep() {
   session.current = { item, kind, answered: false };
   if (kind === 'intro') return showIntro(item);
   if (kind === 'gap') return showGap(item);
-  return showReverse(item);
+  const opts = choicesFor(item, kind === 'meaning' ? 'ru' : 'en');
+  if (!opts) { session.current.kind = 'intro'; return showIntro(item); }
+  return kind === 'meaning' ? showMeaning(item, opts) : showReverse(item, opts);
 }
 
 function sayBtn(text) {
@@ -326,9 +347,23 @@ function showGap(item) {
   `);
 }
 
-function showReverse(item) {
-  const pool = itemsOf(item.topic === 'mine' ? 'all' : item.topic).filter(i => i.id !== item.id && i.en !== item.en);
-  const opts = shuffle([item.en].concat(shuffle(pool).slice(0, 2).map(i => i.en)));
+function showMeaning(item, opts) {
+  render(`
+    ${progressBar()}
+    <div class="card">
+      <div class="kind">Что это значит?</div>
+      <div class="phrase"><span>${esc(item.en)}</span>${sayBtn(item.en)}</div>
+      ${item.ex ? `<div class="example">${highlight(item)}</div>` : ''}
+    </div>
+    <div class="options">
+      ${opts.map(o => `<button class="opt ru-opt" data-ans="${esc(o)}">${esc(o)}</button>`).join('')}
+    </div>
+    <div id="fb"></div>
+  `);
+  speak(item.en);
+}
+
+function showReverse(item, opts) {
   render(`
     ${progressBar()}
     <div class="card">
@@ -347,7 +382,7 @@ function answer(value) {
   if (cur.answered) return;
   cur.answered = true;
   const item = cur.item;
-  const correct = cur.kind === 'gap' ? item.gap.answer : item.en;
+  const correct = cur.kind === 'gap' ? item.gap.answer : cur.kind === 'meaning' ? item.ru : item.en;
   const ok = value === correct;
 
   document.querySelectorAll('.opt').forEach(b => {
@@ -398,6 +433,7 @@ function grade(item, ok) {
     // Ошибку вернём в конце этой же сессии
     requeue(item);
   }
+  p.last = Date.now();
   state.progress[item.id] = p;
   state.days[today()] = (state.days[today()] || 0) + 1;
   save();
@@ -424,6 +460,7 @@ function introAction(act) {
     p.due = Date.now();
     requeue(item);
   }
+  p.last = Date.now();
   state.progress[item.id] = p;
   state.days[today()] = (state.days[today()] || 0) + 1;
   save();
@@ -446,6 +483,47 @@ function showDone() {
     <button class="ghost" data-go="home">На главную</button>
   `);
   session = null;
+}
+
+// ---------- Списки за цифрами на главной ----------
+
+const LISTS = {
+  learned: { title: 'Выучено', empty: 'Пока пусто. Фраза попадает сюда, когда ты несколько раз подряд ответишь на неё верно.' },
+  work:    { title: 'В процессе', empty: 'Пока пусто. Здесь будут фразы, которые ты уже начала учить.' },
+  today:   { title: 'Сегодня', empty: 'Сегодня ещё не занимались. Поехали?' },
+};
+
+function startOfToday() { const d = new Date(); d.setHours(0, 0, 0, 0); return d.getTime(); }
+
+function listOf(kind) {
+  const from = startOfToday();
+  return allItems().filter(i => {
+    const p = prog(i.id);
+    if (!p) return false;
+    if (kind === 'learned') return p.box >= LEARNED_BOX;
+    if (kind === 'work') return p.box > 0 && p.box < LEARNED_BOX;
+    return (p.last || 0) >= from;
+  }).sort((a, b) => (prog(b.id).last || 0) - (prog(a.id).last || 0));
+}
+
+function showList(kind) {
+  const items = listOf(kind);
+  const answers = state.days[today()] || 0;
+  const rows = items.map(i => `
+    <div class="row">
+      <div class="r-main"><div class="r-en">${esc(i.en)}</div><div class="r-ru">${esc(i.ru)}</div></div>
+      ${dots(i.id)}
+      <button class="say" data-say="${esc(i.en)}" aria-label="Послушать">🔊</button>
+    </div>`).join('');
+  render(`
+    <div class="top">
+      <button class="icon-btn" data-go="home" aria-label="Назад">←</button>
+      <h1>${LISTS[kind].title} · ${items.length}</h1>
+    </div>
+    ${kind === 'today' && answers ? `<p class="note">${answers} ${plural(answers, 'ответ', 'ответа', 'ответов')} за сегодня.</p>` : ''}
+    <p class="note">Точки справа — прогресс фразы: три зелёные значат «выучено».</p>
+    <div class="list">${rows || `<p class="note">${LISTS[kind].empty}</p>`}</div>
+  `);
 }
 
 // ---------- Мои фразы ----------
@@ -619,6 +697,8 @@ app.addEventListener('click', e => {
   if (!el) return;
   if (el.dataset.say) { speak(el.dataset.say); return; }
   if (el.dataset.topic) { state.topic = el.dataset.topic; save(); showHome(); return; }
+  if (el.dataset.mode) { state.mode = el.dataset.mode; save(); showHome(); return; }
+  if (el.dataset.list) { showList(el.dataset.list); return; }
   if (el.dataset.ans !== undefined) { answer(el.dataset.ans); return; }
   if (el.dataset.del) { delWord(el.dataset.del); return; }
   const go = el.dataset.go;

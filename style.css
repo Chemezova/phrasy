@@ -188,3 +188,10 @@ input, textarea { font: inherit; color: var(--ink); }
   background: var(--ink); color: var(--bg); padding: 10px 16px; border-radius: 14px; font-size: 15px;
   max-width: calc(100% - 32px);
 }
+
+/* Направление перевода */
+.seg { display: flex; background: var(--chip); border-radius: 14px; padding: 4px; gap: 4px; margin-top: 14px; }
+.seg button { flex: 1; padding: 9px 4px; border-radius: 10px; font-size: 14px; font-weight: 600; color: var(--muted); }
+.seg button.on { background: var(--card); color: var(--ink); box-shadow: var(--shadow); }
+button.stat:active { transform: scale(.97); }
+.opt.ru-opt { font-size: 17px; font-weight: 500; }
