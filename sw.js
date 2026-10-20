@@ -1,6 +1,6 @@
 // Офлайн-режим: держим файлы приложения в кэше.
 // При изменении файлов увеличить номер версии.
-const CACHE = 'phrasy-v3';
+const CACHE = 'phrasy-v4';
 const FILES = ['./', 'index.html', 'style.css', 'data.js', 'data-sheet.js', 'app.js', 'manifest.json', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
@@ -15,7 +15,7 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   e.respondWith(
-    fetch(e.request).then(r => {
+    fetch(e.request, { cache: 'no-cache' }).then(r => {
       const copy = r.clone();
       caches.open(CACHE).then(c => c.put(e.request, copy));
       return r;
