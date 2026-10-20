@@ -184,7 +184,8 @@ function showHome() {
   const all = topicStats('all');
   const todayCount = state.days[today()] || 0;
   const inWork = Object.values(state.progress).filter(p => p.box > 0 && p.box < LEARNED_BOX).length;
-  const topicKeys = Object.keys(TOPICS).filter(k => k !== 'mine' || state.custom.length);
+  const topicKeys = Object.keys(TOPICS).filter(k => !TOPICS[k].group && (k !== 'mine' || state.custom.length));
+  const sheetKeys = Object.keys(TOPICS).filter(k => TOPICS[k].group === 'sheet');
 
   render(`
     <div class="top">
@@ -207,6 +208,8 @@ function showHome() {
       ${topicCard('all', '🎲', 'Всё вперемешку')}
       ${topicKeys.map(k => topicCard(k, TOPICS[k].icon, TOPICS[k].name)).join('')}
     </div>
+    ${sheetKeys.length ? `<div class="section-title">Из моей таблицы</div>
+    <div class="topics">${sheetKeys.map(k => topicCard(k, TOPICS[k].icon, TOPICS[k].name)).join('')}</div>` : ''}
   `);
 }
 

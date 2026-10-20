@@ -1,7 +1,7 @@
 // Офлайн-режим: держим файлы приложения в кэше.
 // При изменении файлов увеличить номер версии.
-const CACHE = 'phrasy-v2';
-const FILES = ['./', 'index.html', 'style.css', 'data.js', 'app.js', 'manifest.json', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
+const CACHE = 'phrasy-v3';
+const FILES = ['./', 'index.html', 'style.css', 'data.js', 'data-sheet.js', 'app.js', 'manifest.json', 'icons/icon-180.png', 'icons/icon-192.png', 'icons/icon-512.png'];
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE).then(c => c.addAll(FILES)).then(() => self.skipWaiting()));
